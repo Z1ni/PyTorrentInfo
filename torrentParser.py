@@ -1,10 +1,12 @@
 # BitTorrent metafile handler (Bencoding/.torrent) for Python 3
 # Mark "zini" Mäkinen 24.10.2014
 
+# You are free to use this code however you want as long as you mention the original author
+
 # TODO: Create reading function to simplify readDict and readList
 # TODO: Cleanup
 
-LEVEL = -1  # Somewhat important only when debugging
+LEVEL = -1  # Pretty printing when logging
 DEBUG = False
 
 
@@ -40,7 +42,7 @@ def readDict(f, pos):
         if d == 'd':
             # Recursion!
             newD = readDict(f, f.tell())
-            # Dictionaries can only be values?
+            # Dictionaries can only be values
             if value is None:
                 value = newD
 
@@ -48,7 +50,7 @@ def readDict(f, pos):
             # List
             LEVEL += 1
             l = readList(f, f.tell())
-            # Lists can only be values?
+            # Lists can only be values
             if value is None:
                 value = l
             LEVEL -= 1
@@ -59,10 +61,10 @@ def readDict(f, pos):
             f.seek(f.tell()-1)  # Start of the string, ex. 6:foobar
             s = readString(f, f.tell())
             if key is not None:
-                # If key is set, this is the value
+                # If the key is set, this is the value
                 value = s
             else:
-                # If key isn't set, this is the key
+                # If the key isn't set, this is the key
                 key = s
             LEVEL -= 1
 
@@ -72,8 +74,10 @@ def readDict(f, pos):
             f.seek(f.tell()-1)  # Start of the integer, ex. i42e
             i = readInt(f, f.tell())
             if key is not None:
+                # If the key is set, this is the value
                 value = i
             else:
+                # If the key isn't set, this is the key
                 key = i
             LEVEL -= 1
 
@@ -82,6 +86,7 @@ def readDict(f, pos):
             LEVEL -= 1
             break
 
+        # Bencoded files are dictionaries so we need both key and value
         if key is not None and value is not None:
             dictionary[key] = value
             key = None
@@ -149,9 +154,12 @@ def readList(f, pos):
 def readInt(f, pos):
     global LEVEL
     log("readInt at %i" % pos)
+
+    # Integers must be encapsulated, ex. i42e = 42
     if f.read(1).decode("utf-8") == 'i':
         b = True
         num = ""
+        # We read the file until 'e'
         while b:
             try:
                 d = f.read(1).decode("utf-8")
@@ -165,7 +173,9 @@ def readInt(f, pos):
                     break
                 else:
                     raise ValueError("Malformed integer")
+
         realInt = int(num)
+
         LEVEL += 1
         log("Int: %i" % realInt)
         LEVEL -= 1
@@ -181,6 +191,8 @@ def readString(f, pos):
     f.seek(pos)
     b = True
     len_text = ""
+
+    # Read file until non-numeric value
     while b:
         b = f.read(1)
         try:
@@ -191,7 +203,8 @@ def readString(f, pos):
             len_text += d
         else:
             break
-    str_len = int(len_text)     # Now we have the length of the string
+    # Now we have the length of the string
+    str_len = int(len_text)
 
     # Read the string
     string = f.read(str_len)
@@ -202,10 +215,11 @@ def readString(f, pos):
         LEVEL -= 1
         return utfString
     except UnicodeDecodeError:
-        # Data
+        # If we can't decode the string as UTF-8 then it's data
         LEVEL += 1
         log("Data")
         LEVEL -= 1
+        # Return "raw" data
         return string
 
 
@@ -234,9 +248,3 @@ def readFile(path):
     f.close()
 
     return dictionary
-
-
-if __name__ == "__main__":
-
-    readFile("test.torrent")
-    exit()
