@@ -32,7 +32,9 @@ if not args.dump and not args.full_dump:
 
     # This data is mandatory
     print("Torrent name: %s" % info["name"])
-    print("Contains %i file(s) and %i pieces" % (len(info["files"]), len(info["pieces"])))
+    # pieces is a hash list containing piece hashes. SHA-1 hash is 20 bytes long.
+    # Every piece has a hash so the piece count is info["pieces"] / 20
+    print("Contains %i file(s) and %i pieces" % (len(info["files"]), int(len(info["pieces"]) / 20)))
     if not private:
         print("Announce URL: %s" % torrent["announce"])
         print("This is not a private torrent")
