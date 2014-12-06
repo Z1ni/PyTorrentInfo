@@ -6,8 +6,16 @@
 # TODO: Create reading function to simplify readDict and readList
 # TODO: Cleanup
 
+import hashlib
+import binascii
+import urllib.parse
+
 LEVEL = -1  # Pretty printing when logging
 DEBUG = False
+INFO_START = 0
+INFO_END = 0
+INFO_START_DICT = 0
+OPEN_DICTS = 0
 
 
 def log(text):
@@ -23,8 +31,16 @@ def isNumeric(i):
         return False
 
 
-def readDict(f, pos):
+def readDict(f, pos, onlyDict=False):
+
+    global OPEN_DICTS
     global LEVEL
+    global INFO_START
+    global INFO_START_DICT
+    global INFO_END
+
+    OPEN_DICTS += 1
+
     LEVEL += 1
     log("readDict at %i" % pos)
     dictionary = {}
@@ -66,6 +82,10 @@ def readDict(f, pos):
             else:
                 # If the key isn't set, this is the key
                 key = s
+                if key == "info":
+                    # Info data starts here
+                    INFO_START_DICT = OPEN_DICTS
+                    INFO_START = f.tell()
             LEVEL -= 1
 
         if d == 'i':
@@ -84,6 +104,10 @@ def readDict(f, pos):
         if d == 'e':
             # Dict close
             LEVEL -= 1
+            if INFO_START_DICT == OPEN_DICTS:
+                # Info data ends
+                INFO_END = f.tell()-1
+            OPEN_DICTS -= 1
             break
 
         # Bencoded files are dictionaries so we need both key and value
@@ -91,6 +115,9 @@ def readDict(f, pos):
             dictionary[key] = value
             key = None
             value = None
+
+        if key is None and value is not None and onlyDict:
+            return value
 
     return dictionary
 
@@ -225,13 +252,18 @@ def readString(f, pos):
 
 def readFile(path):
 
+    global OPEN_DICTS
+    global INFO_START
+    global INFO_END
+
     f = open(path, "rb")
 
     # I think that there can't be multiple dictionaries at root level
     # Correct me if I'm wrong
 
-    # dictList = []
     dictionary = {}
+
+    # Read torrent file
 
     c = f.read(1)
     while c:
@@ -241,10 +273,23 @@ def readFile(path):
             pass
         if d == 'd':
             # Dictionary
-            # dictList.append(readDict(f, f.tell()))
+            OPEN_DICTS += 1
             dictionary["torrent"] = readDict(f, f.tell())
         c = f.read(1)
 
+    # Calculate infohash
+    # Infohash is a SHA-1 hash of the value of the info key (bencoded dict)
+
+    f.seek(INFO_START)
+    infohash_data = f.read(INFO_END - INFO_START)
+
+    infohash = hashlib.sha1(infohash_data)
+
     f.close()
+
+    # Infohash in a few different formats
+    extra = {"infohash": {"digest": infohash.digest(), "hex": infohash.hexdigest(), "url": urllib.parse.quote(infohash.digest())}}
+
+    dictionary["extra_data"] = extra
 
     return dictionary

@@ -29,6 +29,7 @@ path = args.file
 parsed = TP.readFile(path)
 
 torrent = parsed["torrent"]
+extra = parsed["extra_data"]
 info = torrent["info"]
 
 private = False
@@ -55,13 +56,16 @@ else:
 if not args.dump and not args.full_dump and args.key is None:
 
     print("Torrent name: %s" % info["name"])
+    print("Size: %i" % info["length"])
     # pieces is a hash list containing piece hashes. SHA-1 hash is 20 bytes long.
     # Every piece has a hash so the piece count is info["pieces"] / 20
-    try:
+    if info.get("files") is not None and info.get("pieces") is not None:
         print("Contains %i file(s) and %i pieces" % (len(info["files"]), int(len(info["pieces"]) / 20)))
-    except:
-        # It seems that files and pieces are not mandatory because httpseeds key
-        pass
+    elif info.get("files") is None and info.get("pieces") is not None:
+        print("Contains %i pieces" % int(len(info["pieces"]) / 20))
+    elif info.get("files") is not None:
+        print("Contains %i file(s)" % len(info["files"]))
+
     if not private:
         if not trackerless:
             print("Announce URL(s): %s" % ", ".join(trackers))
@@ -81,8 +85,13 @@ if not args.dump and not args.full_dump and args.key is None:
         print("Created by: %s" % torrent["created by"])
         print("Creation date: %s" % dt.fromtimestamp(torrent["creation date"]).strftime("%d.%m.%Y %H:%M:%S"))
         print("Encoding: %s" % torrent["encoding"])
+        print("Comment: %s" % torrent["comment"])
     except:
         pass
+
+    # Extra data, derived from torrent
+    print("Infohash (SHA-1, hex): %s" % extra["infohash"]["hex"])
+    print("Infohash (SHA-1, url): %s" % extra["infohash"]["url"])
 
 elif args.dump:
     # Dump excluding hashes
