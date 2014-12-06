@@ -1,5 +1,5 @@
 # BitTorrent metafile handler (Bencoding/.torrent) for Python 3
-# Mark "zini" Mäkinen 24.10.2014
+# Mark "zini" Mäkinen 2014 (started 24.10.2014)
 
 # You are free to use this code however you want as long as you mention the original author
 
@@ -7,7 +7,6 @@
 # TODO: Cleanup
 
 import hashlib
-import binascii
 import urllib.parse
 
 LEVEL = -1  # Pretty printing when logging
