@@ -10,18 +10,17 @@ With torrent file:
 ```python
 import torrentParser
 
-data = torrentParser.readFile("/file/path/here")
+tp = torrentParser.TorrentParser()
+data = tp.readFile("/file/path/here")
 torrentName = data["torrent"]["info"]["name"]
 ```
 
 With tracker response (string with bencoded data):
 ```python
 import torrentParser
-from io import BytesIO
 
-text_data = BytesIO("d3:bar4:spam3:fooi42ee".encode("utf-8"))
-
-data = torrentParser.readDict(text_data, 0, True)
+tp = torrentParser.TorrentParser()
+data = tp.readDict("d3:bar4:spam3:fooi42ee")
 ```
 
 You can also use bundled torrentInfo.py as a command line program.

@@ -1,294 +1,291 @@
 # BitTorrent metafile handler (Bencoding/.torrent) for Python 3
-# Mark "zini" Mäkinen 2014 (started 24.10.2014)
+# Mark "zini" Mäkinen 2014-2017 (started 24.10.2014)
 
 # You are free to use this code however you want as long as you mention the original author
+# See LICENSE.md
 
 # TODO: Create reading function to simplify readDict and readList
 # TODO: Cleanup
 
+import io
 import hashlib
 import urllib.parse
 
-LEVEL = -1  # Pretty printing when logging
-DEBUG = False
-INFO_START = 0
-INFO_END = 0
-INFO_START_DICT = 0
-OPEN_DICTS = 0
+
+class TorrentParser:
+
+    level = -1  # Pretty printing when self.logging
+    debug = False
+    info_start = 0
+    info_end = 0
+    info_start_dict = 0
+    open_dicts = 0
+    file = None
+
+    def log(self, text):
+        if self.debug:
+            print("  "* (self.level + text))
 
 
-def log(text):
-    if DEBUG:
-        print("  "*LEVEL + text)
-
-
-def isNumeric(i):
-    try:
-        int(i)
-        return True
-    except ValueError:
-        return False
-
-
-def readDict(f, pos, onlyDict=False):
-
-    global OPEN_DICTS
-    global LEVEL
-    global INFO_START
-    global INFO_START_DICT
-    global INFO_END
-
-    OPEN_DICTS += 1
-
-    LEVEL += 1
-    log("readDict at %i" % pos)
-    dictionary = {}
-    key = None
-    value = None
-    f.seek(pos)
-    c = True
-    while c:
-        c = f.read(1)
+    @staticmethod
+    def isNumeric(i):
         try:
-            d = c.decode("utf-8")
-        except UnicodeDecodeError:
-            pass
-
-        if d == 'd':
-            # Recursion!
-            newD = readDict(f, f.tell())
-            # Dictionaries can only be values
-            if value is None:
-                value = newD
-
-        if d == 'l':
-            # List
-            LEVEL += 1
-            l = readList(f, f.tell())
-            # Lists can only be values
-            if value is None:
-                value = l
-            LEVEL -= 1
-
-        if isNumeric(d):
-            # String
-            LEVEL += 1
-            f.seek(f.tell()-1)  # Start of the string, ex. 6:foobar
-            s = readString(f, f.tell())
-            if key is not None:
-                # If the key is set, this is the value
-                value = s
-            else:
-                # If the key isn't set, this is the key
-                key = s
-                if key == "info":
-                    # Info data starts here
-                    INFO_START_DICT = OPEN_DICTS
-                    INFO_START = f.tell()
-            LEVEL -= 1
-
-        if d == 'i':
-            # Integer
-            LEVEL += 1
-            f.seek(f.tell()-1)  # Start of the integer, ex. i42e
-            i = readInt(f, f.tell())
-            if key is not None:
-                # If the key is set, this is the value
-                value = i
-            else:
-                # If the key isn't set, this is the key
-                key = i
-            LEVEL -= 1
-
-        if d == 'e':
-            # Dict close
-            LEVEL -= 1
-            if INFO_START_DICT == OPEN_DICTS:
-                # Info data ends
-                INFO_END = f.tell()-1
-            OPEN_DICTS -= 1
-            break
-
-        # Bencoded files are dictionaries so we need both key and value
-        if key is not None and value is not None:
-            dictionary[key] = value
-            key = None
-            value = None
-
-        if key is None and value is not None and onlyDict:
-            return value
-
-    return dictionary
+            int(i)
+            return True
+        except ValueError:
+            return False
 
 
-def readList(f, pos):
-    global LEVEL
-    log("readList at %i" % pos)
-    f.seek(pos)
-    c = True
+    def readDict(self, str_data=None):
 
-    list_values = []
+        self.open_dicts += 1
 
-    while c:
-        c = f.read(1)
-        try:
-            d = c.decode("utf-8")
-        except UnicodeDecodeError:
-            pass
+        self.level += 1
 
-        if d == 'd':
-            newD = readDict(f, f.tell())
-            list_values.append(newD)
+        if str_data is not None:
+            if isinstance(str_data, str):
+                str_data = str_data.encode("utf-8")
+            self.file = io.BytesIO(str_data)
 
-        if d == 'l':
-            # List
-            LEVEL += 1
-            l = readList(f, f.tell())
+        self.log("readDict at %i" % self.file.tell())
+        dictionary = {}
+        key = None
+        value = None
 
-            list_values.append(l)
-
-            LEVEL -= 1
-
-        if isNumeric(d):
-            # String
-            LEVEL += 1
-            f.seek(f.tell()-1)  # Start of the string, ex. 6:foobar
-            s = readString(f, f.tell())
-
-            list_values.append(s)
-
-            LEVEL -= 1
-
-        if d == 'i':
-            # Integer
-            LEVEL += 1
-            f.seek(f.tell()-1)  # Start of the integer, ex. i42e
-            i = readInt(f, f.tell())
-
-            list_values.append(i)
-
-            LEVEL -= 1
-
-        if d == 'e':
-            # List end
-            LEVEL -= 1
-            break
-
-    return list_values
-
-
-def readInt(f, pos):
-    global LEVEL
-    log("readInt at %i" % pos)
-
-    # Integers must be encapsulated, ex. i42e = 42
-    if f.read(1).decode("utf-8") == 'i':
-        b = True
-        num = ""
-        # We read the file until 'e'
-        while b:
+        c = True
+        while c:
+            c = self.file.read(1)
             try:
-                d = f.read(1).decode("utf-8")
+                d = c.decode("utf-8")
             except UnicodeDecodeError:
-                raise ValueError("Malformed integer: UnicodeDecodeError")
-            if isNumeric(d):
-                num += d
-            else:
-                if d == 'e':
-                    # Correctly read integer
-                    break
+                pass
+
+            if d == 'd':
+                # Recursion!
+                newD = self.readDict()
+                # Dictionaries can only be values
+                if value is None:
+                    value = newD
+
+            if d == 'l':
+                # List
+                self.level += 1
+                l = self.readList()
+                # Lists can only be values
+                if value is None:
+                    value = l
+                self.level -= 1
+
+            if self.isNumeric(d):
+                # String
+                self.level += 1
+                self.file.seek(-1, io.SEEK_CUR)  # Start of the string, ex. 6:foobar
+                s = self.readString()
+                if key is not None:
+                    # If the key is set, this is the value
+                    value = s
                 else:
-                    raise ValueError("Malformed integer")
+                    # If the key isn't set, this is the key
+                    key = s
+                    if key == "info":
+                        # Info data starts here
+                        self.info_start_dict = self.open_dicts
+                        self.info_start = self.file.tell()
+                self.level -= 1
 
-        realInt = int(num)
+            if d == 'i':
+                # Integer
+                self.level += 1
+                self.file.seek(-1, io.SEEK_CUR)  # Start of the integer, ex. i42e
+                i = self.readInt()
+                if key is not None:
+                    # If the key is set, this is the value
+                    value = i
+                else:
+                    # If the key isn't set, this is the key
+                    key = i
+                self.level -= 1
 
-        LEVEL += 1
-        log("Int: %i" % realInt)
-        LEVEL -= 1
-        return realInt
-    else:
-        raise ValueError("Malformed integer")
+            if d == 'e':
+                # Dict close
+                self.level -= 1
+                if self.info_start_dict == self.open_dicts:
+                    # Info data ends
+                    self.info_end = self.file.tell()-1
+                self.open_dicts -= 1
+                break
+
+            # Bencoded files are dictionaries so we need both key and value
+            if key is not None and value is not None:
+                dictionary[key] = value
+                key = None
+                value = None
+
+            if key is None and value is not None and str_data is not None:
+                return value
+
+        return dictionary
 
 
-def readString(f, pos):
-    global LEVEL
-    log("readString at %i" % pos)
-    # Read the length of the string
-    f.seek(pos)
-    b = True
-    len_text = ""
+    def readList(self):
+        self.log("readList at %i" % self.file.tell())
+        c = True
 
-    # Read file until non-numeric value
-    while b:
-        b = f.read(1)
-        try:
-            d = b.decode("utf-8")
-        except UnicodeDecodeError:
-            raise ValueError("Malformed UTF-8 string")
-        if isNumeric(d):
-            len_text += d
+        list_values = []
+
+        while c:
+            c = self.file.read(1)
+            try:
+                d = c.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+
+            if d == 'd':
+                newD = self.readDict()
+                list_values.append(newD)
+
+            if d == 'l':
+                # List
+                self.level += 1
+                l = self.readList()
+
+                list_values.append(l)
+
+                self.level -= 1
+
+            if self.isNumeric(d):
+                # String
+                self.level += 1
+                self.file.seek(-1, io.SEEK_CUR)  # Start of the string, ex. 6:foobar
+                s = self.readString()
+
+                list_values.append(s)
+
+                self.level -= 1
+
+            if d == 'i':
+                # Integer
+                self.level += 1
+                self.file.seek(-1, io.SEEK_CUR)  # Start of the integer, ex. i42e
+                i = self.readInt()
+
+                list_values.append(i)
+
+                self.level -= 1
+
+            if d == 'e':
+                # List end
+                self.level -= 1
+                break
+
+        return list_values
+
+
+    def readInt(self):
+        self.log("readInt at %i" % self.file.tell())
+
+        # Integers must be encapsulated, ex. i42e = 42
+        if self.file.read(1).decode("utf-8") == 'i':
+            b = True
+            num = ""
+            # We read the file until 'e'
+            while b:
+                try:
+                    d = self.file.read(1).decode("utf-8")
+                except UnicodeDecodeError:
+                    raise ValueError("Malformed integer: UnicodeDecodeError")
+                if self.isNumeric(d):
+                    num += d
+                else:
+                    if d == 'e':
+                        # Correctly read integer
+                        break
+                    else:
+                        raise ValueError("Malformed integer")
+
+            realInt = int(num)
+
+            self.level += 1
+            self.log("Int: %i" % realInt)
+            self.level -= 1
+            return realInt
         else:
-            break
-    # Now we have the length of the string
-    str_len = int(len_text)
-
-    # Read the string
-    string = f.read(str_len)
-    try:
-        utfString = string.decode("utf-8")
-        LEVEL += 1
-        log("String: %s" % utfString)
-        LEVEL -= 1
-        return utfString
-    except UnicodeDecodeError:
-        # If we can't decode the string as UTF-8 then it's data
-        LEVEL += 1
-        log("Data")
-        LEVEL -= 1
-        # Return "raw" data
-        return string
+            raise ValueError("Malformed integer")
 
 
-def readFile(path):
+    def readString(self):
+        self.log("readString at %i" % self.file.tell())
+        # Read the length of the string
+        b = True
+        len_text = ""
 
-    global OPEN_DICTS
-    global INFO_START
-    global INFO_END
+        # Read file until non-numeric value
+        while b:
+            b = self.file.read(1)
+            try:
+                d = b.decode("utf-8")
+            except UnicodeDecodeError:
+                raise ValueError("Malformed UTF-8 string")
+            if self.isNumeric(d):
+                len_text += d
+            else:
+                break
+        # Now we have the length of the string
+        str_len = int(len_text)
 
-    f = open(path, "rb")
-
-    # I think that there can't be multiple dictionaries at root level
-    # Correct me if I'm wrong
-
-    dictionary = {}
-
-    # Read torrent file
-
-    c = f.read(1)
-    while c:
+        # Read the string
+        string = self.file.read(str_len)
         try:
-            d = c.decode("utf-8")
+            utfString = string.decode("utf-8")
+            self.level += 1
+            self.log("String: %s" % utfString)
+            self.level -= 1
+            return utfString
         except UnicodeDecodeError:
-            pass
-        if d == 'd':
-            # Dictionary
-            OPEN_DICTS += 1
-            dictionary["torrent"] = readDict(f, f.tell())
-        c = f.read(1)
+            # If we can't decode the string as UTF-8 then it's data
+            self.level += 1
+            self.log("Data")
+            self.level -= 1
+            # Return "raw" data
+            return string
 
-    # Calculate infohash
-    # Infohash is a SHA-1 hash of the value of the info key (bencoded dict)
 
-    f.seek(INFO_START)
-    infohash_data = f.read(INFO_END - INFO_START)
+    def readFile(self, path):
 
-    infohash = hashlib.sha1(infohash_data)
+        self.file = open(path, "rb")
 
-    f.close()
+        # I think that there can't be multiple dictionaries at root level
+        # Correct me if I'm wrong
 
-    # Infohash in a few different formats
-    extra = {"infohash": {"digest": infohash.digest(), "hex": infohash.hexdigest(), "url": urllib.parse.quote(infohash.digest())}}
+        dictionary = {}
 
-    dictionary["extra_data"] = extra
+        # Read torrent file
 
-    return dictionary
+        c = self.file.read(1)
+        while c:
+            try:
+                d = c.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+            if d == 'd':
+                # Dictionary
+                self.open_dicts += 1
+                dictionary["torrent"] = self.readDict()
+            c = self.file.read(1)
+
+        # Calculate infohash
+        # Infohash is a SHA-1 hash of the value of the info key (bencoded dict)
+
+        self.file.seek(self.info_start)
+        infohash_data = self.file.read(self.info_end - self.info_start)
+
+        infohash = hashlib.sha1(infohash_data)
+
+        self.file.close()
+
+        # Infohash in a few different formats
+        extra = {"infohash": {"digest": infohash.digest(), "hex": infohash.hexdigest(), "url": urllib.parse.quote(infohash.digest())}}
+
+        dictionary["extra_data"] = extra
+
+        return dictionary

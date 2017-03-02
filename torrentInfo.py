@@ -1,9 +1,8 @@
 #!/usr/bin/python3
 
-import torrentParser as TP
 import argparse
 from datetime import datetime as dt
-
+from torrentParser import TorrentParser
 
 def finditem(obj, key):
     if key in obj:
@@ -26,7 +25,8 @@ args = argParser.parse_args()
 
 path = args.file
 
-parsed = TP.readFile(path)
+tp = TorrentParser()
+parsed = tp.readFile(path)
 
 torrent = parsed["torrent"]
 extra = parsed["extra_data"]
@@ -56,7 +56,13 @@ else:
 if not args.dump and not args.full_dump and args.key is None:
 
     print("Torrent name: %s" % info["name"])
-    print("Size: %i" % info["length"])
+    total_size = info.get("length")
+    if total_size is None:
+        # Calculate size from file sizes
+        total_size = 0
+        for file in info["files"]:
+            total_size += file["length"]
+    print("Size: %i" % total_size)
     # pieces is a hash list containing piece hashes. SHA-1 hash is 20 bytes long.
     # Every piece has a hash so the piece count is info["pieces"] / 20
     if info.get("files") is not None and info.get("pieces") is not None:
