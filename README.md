@@ -33,3 +33,8 @@ Parameter | What?
 -k / --key | Returns only the specified key-value pair
 
 Hashes make the output harder to read, so don't print them if you don't really need to see them
+
+
+Test Data
+---------
+The test data in this repo is a random selection of .torrent files from archive.org. I have not downloaded or assessed the content itself.
