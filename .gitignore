@@ -1,3 +1,6 @@
 __pycache__/
 *.py[cod]
 *.sublime*
+PyTorrentInfo.egg-info/
+build/
+dist/
