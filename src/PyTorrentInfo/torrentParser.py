@@ -1,11 +1,17 @@
-# BitTorrent metafile handler (Bencoding/.torrent) for Python 3
-# Mark "zini" Mäkinen 2014-2017 (started 24.10.2014)
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+BitTorrent metafile handler (Bencoding/.torrent) for Python 3
+Mark "zini" Mäkinen 2014-2017 (started 24.10.2014)
 
-# You are free to use this code however you want as long as you mention the original author
-# See LICENSE.md
+You are free to use this code however you want as long as you mention the original author
+See LICENSE.md
 
-# TODO: Create reading function to simplify readDict and readList
-# TODO: Cleanup
+See spec: http://www.bittorrent.org/beps/bep_0003.html
+
+TODO: Create reading function to simplify readDict and readList
+TODO: Cleanup
+"""
 
 import io
 import hashlib
@@ -180,37 +186,43 @@ class TorrentParser:
 
         return list_values
 
+    @staticmethod
+    def _readCharacter(fileObj):
+        try:
+            return fileObj.read(1).decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("Malformed integer: UnicodeDecodeError")
 
     def readInt(self):
+        """
+        Ints must be of the form i[0-9]+e or i-[0-9]+e
+        """
         self.log("readInt at %i" % self.file.tell())
 
         # Integers must be encapsulated, ex. i42e = 42
-        if self.file.read(1).decode("utf-8") == 'i':
-            b = True
-            num = ""
+
+        if not self._readCharacter(self.file) == 'i':
+            raise ValueError("Malformed integer - must lead with 'i'")
+
+        num = ""
+        while True:
             # We read the file until 'e'
-            while b:
-                try:
-                    d = self.file.read(1).decode("utf-8")
-                except UnicodeDecodeError:
-                    raise ValueError("Malformed integer: UnicodeDecodeError")
-                if self.isNumeric(d):
-                    num += d
-                else:
-                    if d == 'e':
-                        # Correctly read integer
-                        break
-                    else:
-                        raise ValueError("Malformed integer")
+            d = self.file.read(1).decode("utf-8")
 
-            realInt = int(num)
+            if self.isNumeric(d) or d == '-':
+                num += d
+            elif d == 'e':
+                # Correctly read integer
+                break
+            else:
+                raise ValueError("Malformed integer element - {} + *{}*".format(num, d))
 
-            self.level += 1
-            self.log("Int: %i" % realInt)
-            self.level -= 1
-            return realInt
-        else:
-            raise ValueError("Malformed integer")
+        realInt = int(num)
+
+        self.level += 1
+        self.log("Int: %i" % realInt)
+        self.level -= 1
+        return realInt
 
 
     def readString(self):
